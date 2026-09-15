@@ -113,6 +113,19 @@ def obtenir_bande(freq_mhz):
     if 430.0 <= freq_mhz < 440.0: return "70cm"
     return "Autre"
 
+def categoriser_mode(mode_brut):
+    """Regroupe les modes bruts en catégories principales"""
+    m = str(mode_brut).upper()
+    if 'CW' in m: 
+        return "CW"
+    if any(x in m for x in ['SSB', 'USB', 'LSB']): 
+        return "SSB"
+    if 'FM' in m: 
+        return "FM"
+    if 'FT8' in m or 'FT4' in m: 
+        return "FT8"
+    return "Autre"
+
 def maidenhead_vers_latlon(grid):
     if not grid or grid == "N/A": return None
     grid = grid.strip().upper()
@@ -434,6 +447,29 @@ afficher_sota = st.sidebar.checkbox("Afficher les SOTA", value=True)
 afficher_wwff = st.sidebar.checkbox("Afficher les WWFF (Fauna Flora)", value=True)
 age_max = st.sidebar.slider("Âge maximum des spots (minutes)", min_value=10, max_value=240, value=45, step=5)
 
+# --- NOUVEAUX FILTRES BANDES ET MODES (CASES À COCHER) ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("Filtres par Bandes")
+toutes_bandes_standards = ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "2m"]
+bandes_options = toutes_bandes_standards + ["Autre"]
+
+bandes_choisies = []
+cols_bandes = st.sidebar.columns(3)
+for i, b in enumerate(bandes_options):
+    if cols_bandes[i % 3].checkbox(b, value=True, key=f"chk_bande_{b}"):
+        bandes_choisies.append(b)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Filtres par Modes")
+modes_options = ["CW", "SSB", "FM", "FT8", "Autre"]
+
+modes_choisis = []
+cols_modes = st.sidebar.columns(2)
+for i, m in enumerate(modes_options):
+    if cols_modes[i % 2].checkbox(m, value=True, key=f"chk_mode_{m}"):
+        modes_choisis.append(m)
+st.sidebar.markdown("---")
+
 st.sidebar.subheader("Logs (Déjà contactés)")
 fichier_log_pota = st.sidebar.file_uploader("Importer Log POTA", type=["adi", "csv", "txt"], key="pota")
 fichier_log_sota = st.sidebar.file_uploader("Importer Log SOTA", type=["adi", "csv", "txt"], key="sota")
@@ -510,9 +546,22 @@ coords_utilisateur = maidenhead_vers_latlon(locator_utilisateur) if locator_util
 
 spots_filtres = []
 for spot in spots_bruts:
+    # 1. Filtres de programme originaux
     if spot['type'] == 'POTA' and not afficher_pota: continue
     if spot['type'] == 'SOTA' and not afficher_sota: continue
     if spot['type'] == 'WWFF' and not afficher_wwff: continue
+    
+    # 2. Filtre de Bande
+    bande_reelle = spot['bande']
+    est_bande_autre = bande_reelle not in toutes_bandes_standards
+    if est_bande_autre:
+        if "Autre" not in bandes_choisies: continue
+    else:
+        if bande_reelle not in bandes_choisies: continue
+        
+    # 3. Filtre de Mode
+    cat_mode = categoriser_mode(spot['mode'])
+    if cat_mode not in modes_choisis: continue
     
     _, minutes_age = calculer_age(spot['heure_dt'])
     if minutes_age > age_max:
@@ -712,3 +761,6 @@ if donnees_tableau:
     )
 else:
     st.info("Aucun spot à afficher.")
+
+    
+  
