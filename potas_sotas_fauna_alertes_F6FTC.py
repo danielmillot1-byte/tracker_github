@@ -7,7 +7,6 @@ import requests
 import re
 from datetime import datetime, timezone
 import math
-import json
 import os
 from io import StringIO
 
@@ -22,24 +21,6 @@ except ImportError:
     MODULE_AUTOREFRESH_INSTALLE = False
 
 st.set_page_config(page_title="POTA / SOTA / WWFF Tracker", layout="wide")
-
-FICHIER_CONFIG = "qth_config.json"
-
-def charger_config():
-    if os.path.exists(FICHIER_CONFIG):
-        try:
-            with open(FICHIER_CONFIG, "r") as f:
-                return json.load(f)
-        except:
-            pass
-    return {"call": "", "locator": ""}
-
-def sauvegarder_config():
-    with open(FICHIER_CONFIG, "w") as f:
-        json.dump({
-            "call": st.session_state.call_input, 
-            "locator": st.session_state.loc_input
-        }, f)
 
 # --- FONCTIONS DE TEMPS RÉVISÉES ---
 def parser_heure(chaine_heure):
@@ -411,11 +392,10 @@ def injecter_bandeau_js(carte, coords_utilisateur):
     carte.get_root().html.add_child(folium.Element(js_code))
 
 # --- INITIALISATION SESSION STATE ---
-config_sauvee = charger_config()
 if 'call_input' not in st.session_state:
-    st.session_state.call_input = config_sauvee.get("call", "")
+    st.session_state.call_input = ""
 if 'loc_input' not in st.session_state:
-    st.session_state.loc_input = config_sauvee.get("locator", "")
+    st.session_state.loc_input = ""
 if 'alertes_acquittees' not in st.session_state:
     st.session_state.alertes_acquittees = set()
 
@@ -435,8 +415,8 @@ if MODULE_AUTOREFRESH_INSTALLE:
         st_autorefresh(interval=120000, limit=None, key="autorefresh_spots")
 
 st.sidebar.subheader("Vos Coordonnées")
-indicatif = st.sidebar.text_input("Mon indicatif", key="call_input", on_change=sauvegarder_config)
-locator_utilisateur = st.sidebar.text_input("Mon locator", key="loc_input", on_change=sauvegarder_config)
+indicatif = st.sidebar.text_input("Mon indicatif", key="call_input")
+locator_utilisateur = st.sidebar.text_input("Mon locator", key="loc_input")
 
 st.sidebar.subheader("Filtres d'affichage")
 afficher_pota = st.sidebar.checkbox("Afficher les POTA", value=True)
@@ -445,7 +425,7 @@ afficher_wwff = st.sidebar.checkbox("Afficher les WWFF (Fauna Flora)", value=Tru
 
 # --- NOUVEAUX MENUS DÉROULANTS ---
 liste_bandes = ["Toutes", "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m", "70cm", "Autres"]
-bande_choisie = st.sidebar.selectbox("Filtrer par Bande", liste_bandes, index=11) 
+bande_choisie = st.sidebar.selectbox("Filtrer par Bande", liste_bandes, index=0) 
 
 liste_modes = ["Tous", "CW", "SSB", "FT8", "FM", "Autres"]
 mode_choisi = st.sidebar.selectbox("Filtrer par Mode", liste_modes, index=0)
@@ -573,7 +553,9 @@ for spot in spots_bruts:
 centre_carte = coords_utilisateur if coords_utilisateur else [46.5, 2.0]
 carte = folium.Map(location=centre_carte, zoom_start=5, tiles="OpenStreetMap")
 
+# --- INJECTION CSS POUR ANIMATION ET FONT-AWESOME (Vraies épingles) ---
 css_animation = """
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
 <style>
 @keyframes pulse {
     0% { transform: scale(0.5); opacity: 0.8; }
@@ -583,15 +565,16 @@ css_animation = """
 """
 carte.get_root().html.add_child(folium.Element(css_animation))
 
+# --- LÉGENDE MISE À JOUR (Épingles pour Nouveau / Points pour QSO) ---
 legende_html = '''
 <div style="position: absolute; 
      bottom: 30px; left: 30px; width: max-content; min-width: 200px; height: auto; 
      border:2px solid grey; z-index:9999; font-size:14px;
      background-color:white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
      <b>📍 Légende</b><br>
-     <span style="color: green;">🟢</span> / <span style="color: #007bff;">🔵</span> POTA (Nouv / QSO)<br>
-     <span style="color: orange;">🟠</span> / <span style="color: red;">🔴</span> SOTA (Nouv / QSO)<br>
-     <span style="color: purple;">🟣</span> / <span style="color: #4b0082;">🟪</span> WWFF (Nouv / QSO)<br>
+     <span style="color: green;">📍 Vert</span> (Nouv) / <span style="color: #007bff;">🔵 Bleu</span> (QSO) : POTA<br>
+     <span style="color: orange;">📍 Orange</span> (Nouv) / <span style="color: red;">🔴 Rouge</span> (QSO) : SOTA<br>
+     <span style="color: purple;">📍 Violet</span> (Nouv) / <span style="color: #4b0082;">🟣 Violet foncé</span> (QSO) : WWFF<br>
      <div style="margin-top: 5px; display: flex; align-items: center;">
          <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #28a745; animation: pulse 1.5s infinite; margin-right: 6px; flex-shrink: 0;"></div>
          <span>Spot clignotant : Nouveau</span>
@@ -620,7 +603,7 @@ for spot in spots_filtres:
         coords_str = f"{lat:.4f}, {lon:.4f}"
         
         if spot['deja_contacte']:
-            # --- POPUP SIMPLIFIÉ POUR LES "DÉJÀ CONTACTÉS" ---
+            # --- POPUP SIMPLIFIÉ POUR LES "DÉJÀ CONTACTÉS" EN PETITS POINTS ---
             html_popup_contacte = f"""
             <b>{spot['reference']}</b><br>
             <i>{spot.get('nom', 'N/A')}</i><br>
@@ -644,7 +627,7 @@ for spot in spots_filtres:
             ).add_to(carte)
             
         else:
-            # --- POPUP COMPLET POUR LES NOUVEAUX SPOTS ---
+            # --- POPUP COMPLET POUR LES NOUVEAUX SPOTS EN VRAIES ÉPINGLES ---
             html_popup_nouveau = f"""
             <b>{spot['reference']} ({spot['type']})</b><br>
             <i>{spot.get('nom', 'N/A')}</i><br>
@@ -660,15 +643,21 @@ for spot in spots_filtres:
             Distance: {dist_str}
             """
             
-            if spot['type'] == "POTA": couleur = "green"
-            elif spot['type'] == "SOTA": couleur = "orange"
-            else: couleur = "purple"
+            if spot['type'] == "POTA": couleur_epingle = "#28a745" # Vert
+            elif spot['type'] == "SOTA": couleur_epingle = "#fd7e14" # Orange
+            else: couleur_epingle = "#800080" # Violet
+            
+            html_epingle = f"""
+            <div style="font-size: 26px; color: {couleur_epingle}; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); text-align: center;">
+                <i class="fa-solid fa-map-pin"></i>
+            </div>
+            """
             
             folium.Marker(
                 location=[lat, lon],
                 popup=folium.Popup(html_popup_nouveau, max_width=250),
                 tooltip=f"{spot['activateur']} ({age_str})",
-                icon=folium.Icon(color=couleur, icon="info-sign")
+                icon=folium.DivIcon(html=html_epingle, icon_size=(26, 26), icon_anchor=(13, 26))
             ).add_to(carte)
         
             if spot['type'] == "POTA": couleur_flash = "#28a745"
@@ -756,5 +745,3 @@ if donnees_tableau:
     )
 else:
     st.info("Aucun spot à afficher.")
-
-  
