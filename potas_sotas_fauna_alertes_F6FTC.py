@@ -111,20 +111,7 @@ def obtenir_bande(freq_mhz):
     if 50.0 <= freq_mhz < 54.0: return "6m"
     if 144.0 <= freq_mhz < 148.0: return "2m"
     if 430.0 <= freq_mhz < 440.0: return "70cm"
-    return "Autre"
-
-def categoriser_mode(mode_brut):
-    """Regroupe les modes bruts en catégories principales"""
-    m = str(mode_brut).upper()
-    if 'CW' in m: 
-        return "CW"
-    if any(x in m for x in ['SSB', 'USB', 'LSB']): 
-        return "SSB"
-    if 'FM' in m: 
-        return "FM"
-    if 'FT8' in m or 'FT4' in m: 
-        return "FT8"
-    return "Autre"
+    return "Autres"
 
 def maidenhead_vers_latlon(grid):
     if not grid or grid == "N/A": return None
@@ -173,7 +160,7 @@ def charger_dictionnaire_sommets():
         url_csv = "https://storage.sota.org.uk/summitslist.csv"
         rep = requests.get(url_csv, headers=HEADERS, timeout=10)
         if rep.status_code == 200:
-            df = pd.read_csv(StringIO(rep.text), skiprows=1, usecols=['SummitCode', 'Latitude', 'Longitude'], index_col="SummitCode", low_memory=False)
+            df = pd.read_csv(StringIO(rep.text), skiprows=1, usecols=['SummitCode', 'SummitName', 'Latitude', 'Longitude'], index_col="SummitCode", low_memory=False)
             if not df.empty:
                 df.index = df.index.astype(str).str.strip().str.upper()
             return df
@@ -212,17 +199,21 @@ def recuperer_spots(_dico_parcs, _dico_sommets, _dico_wwff):
                 locator = spot.get('grid6') or spot.get('grid4') or "N/A"
                 heure_dt = parser_heure(spot.get('spotTime'))
                 
+                nom = spot.get('name', 'N/A')
                 coords = None
+                
                 if reference in _dico_parcs.index:
                     parc_data = _dico_parcs.loc[reference]
                     if isinstance(parc_data, pd.DataFrame): parc_data = parc_data.iloc[0]
                     coords = (float(parc_data['latitude']), float(parc_data['longitude']))
+                    if nom == 'N/A' and 'name' in parc_data:
+                        nom = str(parc_data['name'])
                 else:
                     coords = maidenhead_vers_latlon(locator)
                 
                 spots.append({
                     'type': 'POTA', 'activateur': spot.get('activator', 'N/A'),
-                    'reference': reference, 'freq_mhz': freq_mhz,
+                    'reference': reference, 'nom': nom, 'freq_mhz': freq_mhz,
                     'bande': obtenir_bande(freq_mhz), 'mode': spot.get('mode', 'N/A'),
                     'locator': locator, 'coords': coords, 'heure_dt': heure_dt
                 })
@@ -256,6 +247,7 @@ def recuperer_spots(_dico_parcs, _dico_sommets, _dico_wwff):
                     correspondances = [idx for idx in _dico_sommets.index if str(idx).endswith(f"/{reference}")]
                     if correspondances: reference = correspondances[0]  
                 
+                nom = 'N/A'
                 coords = None
                 locator_calcule = "N/A"
                 if reference in _dico_sommets.index:
@@ -263,13 +255,15 @@ def recuperer_spots(_dico_parcs, _dico_sommets, _dico_wwff):
                     if isinstance(sommet_data, pd.DataFrame): sommet_data = sommet_data.iloc[0]
                     coords = (float(sommet_data['Latitude']), float(sommet_data['Longitude']))
                     locator_calcule = latlon_vers_maidenhead(coords[0], coords[1])
+                    if 'SummitName' in sommet_data:
+                        nom = str(sommet_data['SummitName'])
                 
                 activateur = spot.get('activatorcallsign') or spot.get('activator') or spot.get('callsign') or 'N/A'
                 mode = spot.get('mode') or 'N/A'
                 
                 spots.append({
                     'type': 'SOTA', 'activateur': str(activateur).strip().upper(),
-                    'reference': reference, 'freq_mhz': freq_mhz,
+                    'reference': reference, 'nom': nom, 'freq_mhz': freq_mhz,
                     'bande': obtenir_bande(freq_mhz), 'mode': str(mode).strip().upper(),
                     'locator': locator_calcule, 'coords': coords, 'heure_dt': heure_dt
                 })
@@ -292,6 +286,7 @@ def recuperer_spots(_dico_parcs, _dico_sommets, _dico_wwff):
                 reference = str(spot.get('reference', 'N/A')).strip().upper()
                 activateur = str(spot.get('activator', 'N/A')).strip().upper()
                 mode = str(spot.get('mode', 'N/A')).strip().upper()
+                nom = str(spot.get('name', 'N/A'))
                 
                 chaine_temps = spot.get('spot_time_formatted') or spot.get('time') or spot.get('timestamp')
                 heure_dt = parser_heure(chaine_temps)
@@ -310,6 +305,8 @@ def recuperer_spots(_dico_parcs, _dico_sommets, _dico_wwff):
                 if coords is None and reference in _dico_wwff.index:
                     wwff_data = _dico_wwff.loc[reference]
                     if isinstance(wwff_data, pd.DataFrame): wwff_data = wwff_data.iloc[0]
+                    if nom == 'N/A' and 'name' in wwff_data:
+                        nom = str(wwff_data['name'])
                     try:
                         lat_csv = float(wwff_data['latitude'])
                         lon_csv = float(wwff_data['longitude'])
@@ -321,7 +318,7 @@ def recuperer_spots(_dico_parcs, _dico_sommets, _dico_wwff):
                 
                 spots.append({
                     'type': 'WWFF', 'activateur': activateur,
-                    'reference': reference, 'freq_mhz': freq_mhz,
+                    'reference': reference, 'nom': nom, 'freq_mhz': freq_mhz,
                     'bande': obtenir_bande(freq_mhz), 'mode': mode,
                     'locator': locator_calcule, 'coords': coords, 'heure_dt': heure_dt
                 })
@@ -445,30 +442,16 @@ st.sidebar.subheader("Filtres d'affichage")
 afficher_pota = st.sidebar.checkbox("Afficher les POTA", value=True)
 afficher_sota = st.sidebar.checkbox("Afficher les SOTA", value=True)
 afficher_wwff = st.sidebar.checkbox("Afficher les WWFF (Fauna Flora)", value=True)
+
+# --- NOUVEAUX MENUS DÉROULANTS ---
+liste_bandes = ["Toutes", "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m", "70cm", "Autres"]
+bande_choisie = st.sidebar.selectbox("Filtrer par Bande", liste_bandes, index=11) 
+
+liste_modes = ["Tous", "CW", "SSB", "FT8", "FM", "Autres"]
+mode_choisi = st.sidebar.selectbox("Filtrer par Mode", liste_modes, index=0)
+# ---------------------------------
+
 age_max = st.sidebar.slider("Âge maximum des spots (minutes)", min_value=10, max_value=240, value=45, step=5)
-
-# --- NOUVEAUX FILTRES BANDES ET MODES (CASES À COCHER) ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("Filtres par Bandes")
-toutes_bandes_standards = ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "2m"]
-bandes_options = toutes_bandes_standards + ["Autre"]
-
-bandes_choisies = []
-cols_bandes = st.sidebar.columns(3)
-for i, b in enumerate(bandes_options):
-    if cols_bandes[i % 3].checkbox(b, value=True, key=f"chk_bande_{b}"):
-        bandes_choisies.append(b)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Filtres par Modes")
-modes_options = ["CW", "SSB", "FM", "FT8", "Autre"]
-
-modes_choisis = []
-cols_modes = st.sidebar.columns(2)
-for i, m in enumerate(modes_options):
-    if cols_modes[i % 2].checkbox(m, value=True, key=f"chk_mode_{m}"):
-        modes_choisis.append(m)
-st.sidebar.markdown("---")
 
 st.sidebar.subheader("Logs (Déjà contactés)")
 fichier_log_pota = st.sidebar.file_uploader("Importer Log POTA", type=["adi", "csv", "txt"], key="pota")
@@ -546,22 +529,25 @@ coords_utilisateur = maidenhead_vers_latlon(locator_utilisateur) if locator_util
 
 spots_filtres = []
 for spot in spots_bruts:
-    # 1. Filtres de programme originaux
     if spot['type'] == 'POTA' and not afficher_pota: continue
     if spot['type'] == 'SOTA' and not afficher_sota: continue
     if spot['type'] == 'WWFF' and not afficher_wwff: continue
     
-    # 2. Filtre de Bande
-    bande_reelle = spot['bande']
-    est_bande_autre = bande_reelle not in toutes_bandes_standards
-    if est_bande_autre:
-        if "Autre" not in bandes_choisies: continue
-    else:
-        if bande_reelle not in bandes_choisies: continue
+    # --- FILTRES BANDE ET MODE ---
+    if bande_choisie != "Toutes" and spot['bande'] != bande_choisie:
+        continue
         
-    # 3. Filtre de Mode
-    cat_mode = categoriser_mode(spot['mode'])
-    if cat_mode not in modes_choisis: continue
+    if mode_choisi != "Tous":
+        mode_spot = str(spot['mode']).upper()
+        if mode_choisi == "SSB" and mode_spot in ["USB", "LSB", "SSB"]:
+            pass
+        elif mode_choisi == "Autres":
+            # On ignore les modes standards pour ne garder que les autres (FT4, MSK144, RTTY, etc.)
+            if mode_spot in ["CW", "SSB", "USB", "LSB", "FT8", "FM"]:
+                continue
+        elif mode_choisi not in mode_spot:
+            continue
+    # -----------------------------
     
     _, minutes_age = calculer_age(spot['heure_dt'])
     if minutes_age > age_max:
@@ -631,24 +617,16 @@ for spot in spots_filtres:
         age_str, min_brut = calculer_age(spot['heure_dt'])
         heure_utc_str = spot['heure_dt'].strftime("%H:%M UTC") if spot['heure_dt'] else "N/A"
         dist_str = f"{spot['distance']:.0f} km" if spot['distance'] else "N/A"
-        contact_str = "✅ <b>Déjà contacté</b><br>" if spot['deja_contacte'] else "✨ <b>NOUVEAU</b><br>"
         coords_str = f"{lat:.4f}, {lon:.4f}"
         
-        html_popup = f"""
-        {contact_str}
-        <b>{spot['activateur']}</b> ({spot['type']})<br>
-        Réf: {spot['reference']}<br>
-        Fréq: {spot['freq_mhz']:.3f} MHz ({spot['bande']})<br>
-        Mode: {spot['mode']}<br>
-        <hr style="margin:5px 0px;">
-        Heure: <b>{heure_utc_str}</b><br>
-        Âge: <span style="color: red;"><b>{age_str}</b></span><br>
-        Grid: {spot['locator']}<br>
-        Coords : <b>{coords_str}</b><br>
-        Distance: {dist_str}
-        """
-        
         if spot['deja_contacte']:
+            # --- POPUP SIMPLIFIÉ POUR LES "DÉJÀ CONTACTÉS" ---
+            html_popup_contacte = f"""
+            <b>{spot['reference']}</b><br>
+            <i>{spot.get('nom', 'N/A')}</i><br>
+            ✅ <b>Déjà contacté</b>
+            """
+            
             if spot['type'] == "POTA": couleur_point = "#007bff"
             elif spot['type'] == "SOTA": couleur_point = "red"
             else: couleur_point = "#4b0082" 
@@ -661,18 +639,34 @@ for spot in spots_filtres:
                 fill_color=couleur_point,
                 fill_opacity=1.0,
                 weight=1,
-                popup=folium.Popup(html_popup, max_width=250),
-                tooltip=f"{spot['activateur']} ({age_str}) - Déjà QSO"
+                popup=folium.Popup(html_popup_contacte, max_width=250),
+                tooltip=f"{spot['reference']} - Déjà QSO"
             ).add_to(carte)
             
         else:
+            # --- POPUP COMPLET POUR LES NOUVEAUX SPOTS ---
+            html_popup_nouveau = f"""
+            <b>{spot['reference']} ({spot['type']})</b><br>
+            <i>{spot.get('nom', 'N/A')}</i><br>
+            ✨ <b>NOUVEAU</b><br>
+            Activateur : <b>{spot['activateur']}</b><br>
+            Fréq: {spot['freq_mhz']:.3f} MHz ({spot['bande']})<br>
+            Mode: {spot['mode']}<br>
+            <hr style="margin:5px 0px;">
+            Heure: <b>{heure_utc_str}</b><br>
+            Âge: <span style="color: red;"><b>{age_str}</b></span><br>
+            Grid: {spot['locator']}<br>
+            Coords : <b>{coords_str}</b><br>
+            Distance: {dist_str}
+            """
+            
             if spot['type'] == "POTA": couleur = "green"
             elif spot['type'] == "SOTA": couleur = "orange"
             else: couleur = "purple"
             
             folium.Marker(
                 location=[lat, lon],
-                popup=folium.Popup(html_popup, max_width=250),
+                popup=folium.Popup(html_popup_nouveau, max_width=250),
                 tooltip=f"{spot['activateur']} ({age_str})",
                 icon=folium.Icon(color=couleur, icon="info-sign")
             ).add_to(carte)
@@ -730,6 +724,7 @@ for s in spots_filtres:
         "Prog": s['type'],
         "Act.": s['activateur'],
         "Réf": s['reference'],
+        "Nom": s.get('nom', 'N/A'),
         "Fréq (MHz)": round(s['freq_mhz'], 3),
         "Bande": s['bande'],
         "Mode": s['mode'],
@@ -753,7 +748,7 @@ if donnees_tableau:
                 default=False,
             )
         },
-        disabled=["Déjà Qso", "Âge", "Heure (UTC)", "Prog", "Act.", "Réf", "Fréq (MHz)", "Bande", "Mode", "Dist.", "Locator", "Lat/Lon"],
+        disabled=["Déjà Qso", "Âge", "Heure (UTC)", "Prog", "Act.", "Réf", "Nom", "Fréq (MHz)", "Bande", "Mode", "Dist.", "Locator", "Lat/Lon"],
         hide_index=True,
         use_container_width=True,
         key="editeur_alertes",
@@ -762,5 +757,4 @@ if donnees_tableau:
 else:
     st.info("Aucun spot à afficher.")
 
-    
   
