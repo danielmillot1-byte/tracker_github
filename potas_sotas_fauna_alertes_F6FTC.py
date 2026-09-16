@@ -1,4 +1,5 @@
 # --- Ce script a été réalisé par F6FTC avec l'aide de l'IA Gemini---
+# --- on vérifie ce qu'on recoit et ce qui est affiché---
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
@@ -423,9 +424,9 @@ afficher_pota = st.sidebar.checkbox("Afficher les POTA", value=True)
 afficher_sota = st.sidebar.checkbox("Afficher les SOTA", value=True)
 afficher_wwff = st.sidebar.checkbox("Afficher les WWFF (Fauna Flora)", value=True)
 
-# --- NOUVEAUX MENUS DÉROULANTS ---
-liste_bandes = ["Toutes", "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m", "70cm", "Autres"]
-bande_choisie = st.sidebar.selectbox("Filtrer par Bande", liste_bandes, index=0) 
+# --- NOUVEAUX MENUS DÉROULANTS (AVEC MULTISELECT) ---
+liste_bandes = ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m", "70cm", "Autres"]
+bandes_choisies = st.sidebar.multiselect("Filtrer par Bandes", liste_bandes, default=liste_bandes) 
 
 liste_modes = ["Tous", "CW", "SSB", "FT8", "FM", "Autres"]
 mode_choisi = st.sidebar.selectbox("Filtrer par Mode", liste_modes, index=0)
@@ -514,7 +515,7 @@ for spot in spots_bruts:
     if spot['type'] == 'WWFF' and not afficher_wwff: continue
     
     # --- FILTRES BANDE ET MODE ---
-    if bande_choisie != "Toutes" and spot['bande'] != bande_choisie:
+    if spot['bande'] not in bandes_choisies:
         continue
         
     if mode_choisi != "Tous":
@@ -692,6 +693,18 @@ try:
     st_folium(carte, use_container_width=True, height=600, returned_objects=[], key=cle_carte)
 except TypeError:
     st_folium(carte, width=1200, height=600, returned_objects=[], key=cle_carte)
+
+# --- MODE DÉBOGAGE POUR COMPARER LES FLUX ---
+st.markdown("---")
+if st.checkbox("🔍 Mode Débogage : Comparer les données reçues et affichées"):
+    col_debug1, col_debug2 = st.columns(2)
+    with col_debug1:
+        st.markdown(f"**Données brutes reçues : {len(spots_bruts)}**")
+        st.dataframe(spots_bruts)
+    with col_debug2:
+        st.markdown(f"**Données affichées (filtrées) : {len(spots_filtres)}**")
+        st.dataframe(spots_filtres)
+st.markdown("---")
 
 # --- TABLEAU DE BORD INTERACTIF ---
 st.subheader("📋 Liste détaillée (Cochez 'Ack' pour masquer une alerte)")
